@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AthenaSettings(BaseSettings):
     """Environment-only configuration for a FHIR R4 SMART v2 service app."""
 
-    model_config = SettingsConfigDict(env_prefix="ATHENA_", case_sensitive=False)
+    model_config = SettingsConfigDict(env_prefix="ATHENA_", case_sensitive=False, env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     client_id: str
     client_secret: SecretStr

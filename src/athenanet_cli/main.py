@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -72,6 +73,27 @@ def auth_check() -> None:
             client.authenticate()
         console.print("Authentication succeeded.")
     _run(action)
+
+
+@auth_app.command("setup")
+def auth_setup() -> None:
+    """Create or replace the private .env credentials file in this folder."""
+    destination = Path.cwd() / ".env"
+    if destination.exists() and not typer.confirm("Replace the existing private .env file?", default=False):
+        raise typer.Abort()
+    client_id = typer.prompt("Athenahealth Client ID")
+    client_secret = typer.prompt("Athenahealth Client Secret", hide_input=True, confirmation_prompt=True)
+    if not client_id.strip() or not client_secret:
+        raise typer.BadParameter("Client ID and Client Secret are required.")
+    settings = {
+        "ATHENA_CLIENT_ID": client_id.strip(),
+        "ATHENA_CLIENT_SECRET": client_secret,
+        "ATHENA_SCOPE": "system/Patient.rs system/DocumentReference.rs",
+        "ATHENA_FHIR_BASE_URL": "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer",
+    }
+    destination.write_text("\n".join(f"{key}={json.dumps(value)}" for key, value in settings.items()) + "\n", encoding="utf-8")
+    destination.chmod(0o600)
+    console.print("Saved private credentials to .env. Next run: athena auth check")
 
 
 @patients_app.command("search")

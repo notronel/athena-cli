@@ -13,7 +13,8 @@ def test_help_lists_only_supported_fhir_command_groups() -> None:
     assert "appointments" not in result.stdout
 
 
-def test_patient_command_requires_configuration() -> None:
+def test_patient_command_requires_configuration(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ["patients", "search", "--first-name", "Ada"], env={})
     assert result.exit_code != 0
     assert "ATHENA_" in result.stderr

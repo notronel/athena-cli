@@ -4,18 +4,15 @@ A read-only Python command-line client for athenahealth FHIR R4 SMART v2. It can
 
 ## Setup
 
-Create an athenahealth sandbox application with only the required read permissions. Export credentials in your shell; this tool does not read or save a `.env` file, access token, response body, or patient cache.
+Create an athenahealth sandbox application with only the required read permissions. The simplest setup is interactive and saves credentials only to the local `.env` file with owner-only permissions.
 
 ```sh
-export ATHENA_CLIENT_ID="your-client-id"
-export ATHENA_CLIENT_SECRET="your-client-secret"
-export ATHENA_SCOPE="system/Patient.rs system/DocumentReference.rs"
-
 python -m venv .venv
 .venv/bin/pip install -e '.[dev]'
+.venv/bin/athena auth setup
 ```
 
-`ATHENA_FHIR_BASE_URL` defaults to the athenaPractice v25 sandbox. Set it or `ATHENA_TOKEN_URL` only if athenahealth supplies different values.
+Then run `.venv/bin/athena auth check`. The CLI reads `.env` automatically and never prints the secret, writes API responses to disk, or persists tokens. `ATHENA_FHIR_BASE_URL` defaults to the athenaPractice v25 sandbox; override it only if athenahealth supplies a different URL.
 
 ## Commands
 

@@ -16,11 +16,9 @@ from .config import AthenaSettings
 app = typer.Typer(help="Read-only athenahealth sandbox CLI.", no_args_is_help=True)
 auth_app = typer.Typer(help="Credential and connection checks.")
 patients_app = typer.Typer(help="Read-only patient lookup.")
-appointments_app = typer.Typer(help="Read-only appointment lookup.")
 documents_app = typer.Typer(help="Read-only document metadata lookup.")
 app.add_typer(auth_app, name="auth")
 app.add_typer(patients_app, name="patients")
-app.add_typer(appointments_app, name="appointments")
 app.add_typer(documents_app, name="documents")
 console = Console()
 
@@ -86,23 +84,7 @@ def patients_search(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Search patients using one or more permitted identifiers."""
-    _run(lambda: _display(_client_call("search_patients", patient_id=patient_id, first_name=first_name, last_name=last_name, dob=dob, limit=limit), as_json, ["patientid", "firstname", "lastname", "dob"]))
-
-
-@appointments_app.command("list")
-def appointments_list(
-    patient_id: Annotated[str, typer.Option()],
-    from_date: Annotated[str, typer.Option(callback=_date)],
-    to_date: Annotated[str, typer.Option(callback=_date)],
-    department_id: Annotated[str | None, typer.Option()] = None,
-    status: Annotated[str | None, typer.Option()] = None,
-    limit: Annotated[int, typer.Option(min=1, max=500)] = 50,
-    as_json: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    """List a patient's appointments within an inclusive date range."""
-    if from_date > to_date:
-        raise typer.BadParameter("--from-date must not be after --to-date.")
-    _run(lambda: _display(_client_call("list_appointments", patient_id=patient_id, from_date=from_date, to_date=to_date, department_id=department_id, status=status, limit=limit), as_json, ["appointmentid", "date", "time", "status", "departmentid"]))
+    _run(lambda: _display(_client_call("search_patients", patient_id=patient_id, first_name=first_name, last_name=last_name, dob=dob, limit=limit), as_json, ["id", "resourceType", "active", "gender", "birthDate"]))
 
 
 @documents_app.command("list")
@@ -117,7 +99,7 @@ def documents_list(
     """List document metadata for a patient; document content is never downloaded."""
     if from_date and to_date and from_date > to_date:
         raise typer.BadParameter("--from-date must not be after --to-date.")
-    _run(lambda: _display(_client_call("list_documents", patient_id=patient_id, from_date=from_date, to_date=to_date, document_type=document_type, limit=limit), as_json, ["documentid", "documenttype", "createddate", "departmentid"]))
+    _run(lambda: _display(_client_call("list_documents", patient_id=patient_id, from_date=from_date, to_date=to_date, document_type=document_type, limit=limit), as_json, ["id", "resourceType", "status", "date"]))
 
 
 @documents_app.command("get")
@@ -127,7 +109,7 @@ def documents_get(
     as_json: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Retrieve one document's permitted metadata; document content is never downloaded."""
-    _run(lambda: _display(_client_call("get_document", patient_id=patient_id, document_id=document_id), as_json, ["documentid", "documenttype", "createddate", "departmentid", "status"]))
+    _run(lambda: _display(_client_call("get_document", patient_id=patient_id, document_id=document_id), as_json, ["id", "resourceType", "status", "date"]))
 
 
 def _client_call(method: str, **kwargs: Any) -> Any:

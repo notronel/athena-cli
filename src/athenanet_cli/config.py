@@ -5,31 +5,29 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AthenaSettings(BaseSettings):
-    """Environment-only configuration for a registered athenahealth app."""
+    """Environment-only configuration for a FHIR R4 SMART v2 service app."""
 
     model_config = SettingsConfigDict(env_prefix="ATHENA_", case_sensitive=False)
 
-    practice_id: str
     client_id: str
     client_secret: SecretStr
-    base_url: str = "https://api.preview.platform.athenahealth.com/v1"
-    token_path: str = "token"
-    scope: str | None = None
+    fhir_base_url: str = "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer"
+    token_url: str | None = None
+    scope: str = "system/Patient.rs system/DocumentReference.rs"
     timeout_seconds: float = 20.0
 
-    @field_validator("practice_id", "client_id")
+    @field_validator("client_id")
     @classmethod
     def required_non_blank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("must not be blank")
         return value.strip()
 
-    @field_validator("base_url")
+    @field_validator("fhir_base_url")
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.rstrip("/")
 
-    @field_validator("token_path")
-    @classmethod
-    def normalize_token_path(cls, value: str) -> str:
-        return value.strip("/")
+    @property
+    def resolved_token_url(self) -> str:
+        return self.token_url or f"{self.fhir_base_url}/oauth2/token"

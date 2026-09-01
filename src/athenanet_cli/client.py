@@ -14,7 +14,7 @@ class AthenaError(RuntimeError):
 
 
 class AthenaClient:
-    """Small read-only client. OAuth token POST is the sole non-GET request."""
+    """Read-only FHIR R4 SMART v2 client; only token acquisition uses POST."""
 
     def __init__(self, settings: AthenaSettings, transport: httpx.BaseTransport | None = None):
         self.settings = settings
@@ -30,24 +30,13 @@ class AthenaClient:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    @property
-    def api_base(self) -> str:
-        return f"{self.settings.base_url}/{self.settings.practice_id}"
-
-    @property
-    def token_url(self) -> str:
-        return f"{self.api_base}/{self.settings.token_path}"
-
     def authenticate(self) -> None:
-        payload: dict[str, str] = {
-            "grant_type": "client_credentials",
-            "client_id": self.settings.client_id,
-            "client_secret": self.settings.client_secret.get_secret_value(),
-        }
-        if self.settings.scope:
-            payload["scope"] = self.settings.scope
         try:
-            response = self._request("POST", self.token_url, data=payload)
+            response = self._request(
+                "POST", self.settings.resolved_token_url,
+                data={"grant_type": "client_credentials", "scope": self.settings.scope},
+                auth=(self.settings.client_id, self.settings.client_secret.get_secret_value()),
+            )
             token = response.json().get("access_token")
         except (httpx.HTTPError, ValueError, AttributeError) as exc:
             raise AthenaError(self._safe_error("authentication", exc)) from exc
@@ -55,121 +44,64 @@ class AthenaClient:
             raise AthenaError("Authentication succeeded but did not return an access token.")
         self._access_token = token
 
-    def search_patients(
-        self,
-        *,
-        patient_id: str | None = None,
-        first_name: str | None = None,
-        last_name: str | None = None,
-        dob: str | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
+    def search_patients(self, *, patient_id: str | None = None, first_name: str | None = None, last_name: str | None = None, dob: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         if not any((patient_id, first_name, last_name, dob)):
             raise AthenaError("Provide at least one patient search field.")
-        return self._get_collection(
-            "patients",
-            {"patientid": patient_id, "firstname": first_name, "lastname": last_name, "dob": dob, "limit": str(limit)},
-            "patients",
-        )
+        if patient_id:
+            return [self._resource(f"Patient/{patient_id}")]
+        return self._search("Patient", {"given": first_name, "family": last_name, "birthdate": dob}, limit)
 
-    def list_appointments(
-        self,
-        *,
-        patient_id: str,
-        from_date: str,
-        to_date: str,
-        department_id: str | None = None,
-        status: str | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        return self._get_collection(
-            "appointments",
-            {
-                "patientid": patient_id,
-                "startdate": from_date,
-                "enddate": to_date,
-                "departmentid": department_id,
-                "status": status,
-                "limit": str(limit),
-            },
-            "appointments",
-        )
-
-    def list_documents(
-        self, *, patient_id: str, from_date: str | None = None, to_date: str | None = None, document_type: str | None = None, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        return self._get_collection(
-            f"patients/{patient_id}/documents",
-            {"fromdate": from_date, "todate": to_date, "documenttype": document_type, "limit": str(limit)},
-            "documents",
-        )
+    def list_documents(self, *, patient_id: str, from_date: str | None = None, to_date: str | None = None, document_type: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        params: list[tuple[str, str]] = [("patient", patient_id)]
+        if from_date:
+            params.append(("date", f"ge{from_date}"))
+        if to_date:
+            params.append(("date", f"le{to_date}"))
+        if document_type:
+            params.append(("type", document_type))
+        return self._search("DocumentReference", params, limit)
 
     def get_document(self, *, patient_id: str, document_id: str) -> dict[str, Any]:
-        payload = self._get(f"patients/{patient_id}/documents/{document_id}")
-        if isinstance(payload, list):
-            if not payload:
-                raise AthenaError("Document was not found.")
-            return self._as_mapping(payload[0])
-        if isinstance(payload, Mapping) and isinstance(payload.get("document"), Mapping):
-            return dict(payload["document"])
-        return self._as_mapping(payload)
+        document = self._resource(f"DocumentReference/{document_id}")
+        subject = document.get("subject", {})
+        if isinstance(subject, Mapping) and subject.get("reference") not in {f"Patient/{patient_id}", patient_id}:
+            raise AthenaError("Document does not belong to the requested patient.")
+        return document
 
-    def _get_collection(self, path: str, params: dict[str, str | None], key: str) -> list[dict[str, Any]]:
-        limit = int(params.pop("limit", "50") or "50")
-        offset = 0
-        items: list[dict[str, Any]] = []
-        while len(items) < limit:
-            page_size = min(50, limit - len(items))
-            payload = self._get(path, {**params, "limit": str(page_size), "offset": str(offset)})
-            page = self._collection_from_payload(payload, key)
-            items.extend(page)
-            if len(page) < page_size:
-                break
-            offset += len(page)
-        return items[:limit]
+    def _search(self, resource_type: str, params: Mapping[str, str | None] | list[tuple[str, str]], limit: int) -> list[dict[str, Any]]:
+        query = [(key, value) for key, value in (params.items() if isinstance(params, Mapping) else params) if value is not None]
+        query.append(("_count", str(min(50, limit))))
+        resources: list[dict[str, Any]] = []
+        next_url: str | None = f"{self.settings.fhir_base_url}/fhir/{resource_type}"
+        while next_url and len(resources) < limit:
+            payload = self._get_url(next_url, query)
+            query = []
+            if not isinstance(payload, Mapping) or payload.get("resourceType") != "Bundle":
+                raise AthenaError(f"Unexpected {resource_type} search response format.")
+            for entry in payload.get("entry", []):
+                if isinstance(entry, Mapping) and isinstance(entry.get("resource"), Mapping):
+                    resources.append(dict(entry["resource"]))
+                    if len(resources) == limit:
+                        return resources
+            next_url = self._bundle_next(payload)
+        return resources
 
-    def _collection_from_payload(self, payload: Any, key: str) -> list[dict[str, Any]]:
-        if isinstance(payload, list):
-            return [self._as_mapping(item) for item in payload]
-        if isinstance(payload, Mapping):
-            collection = payload.get(key, payload.get("data", []))
-            if isinstance(collection, list):
-                return [self._as_mapping(item) for item in collection]
-        raise AthenaError(f"Unexpected {key} response format.")
+    def _resource(self, path: str) -> dict[str, Any]:
+        payload = self._get_url(f"{self.settings.fhir_base_url}/fhir/{path}")
+        if not isinstance(payload, Mapping):
+            raise AthenaError("Unexpected FHIR resource response format.")
+        return dict(payload)
 
-    def _get(self, path: str, params: dict[str, str | None] | None = None) -> Any:
+    def _get_url(self, url: str, params: list[tuple[str, str]] | None = None) -> Any:
         if self._access_token is None:
             self.authenticate()
-        clean_params = {key: value for key, value in (params or {}).items() if value is not None}
         try:
-            response = self._request(
-                "GET",
-                f"{self.api_base}/{path.lstrip('/')}",
-                params=clean_params,
-                headers={"Authorization": f"Bearer {self._access_token}"},
-            )
+            response = self._request("GET", url, params=params, headers={"Authorization": f"Bearer {self._access_token}", "Accept": "application/fhir+json"})
             return response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise AthenaError(self._safe_error("read request", exc)) from exc
 
-    @staticmethod
-    def _as_mapping(value: Any) -> dict[str, Any]:
-        if not isinstance(value, Mapping):
-            raise AthenaError("Unexpected item in API response.")
-        return dict(value)
-
-    @staticmethod
-    def _safe_error(operation: str, exc: Exception) -> str:
-        if isinstance(exc, httpx.HTTPStatusError):
-            return f"Athenahealth {operation} failed with HTTP {exc.response.status_code}. Check API permissions and request fields."
-        if isinstance(exc, httpx.TimeoutException):
-            return f"Athenahealth {operation} timed out."
-        if isinstance(exc, httpx.RequestError):
-            return f"Athenahealth {operation} could not reach the configured API endpoint."
-        return f"Athenahealth {operation} returned an invalid response."
-
     def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
-        """Retry transient failures only; request and response payloads are never logged."""
         last_error: httpx.HTTPError | None = None
         for attempt in range(3):
             try:
@@ -185,3 +117,20 @@ class AthenaClient:
         if last_error is not None:
             raise last_error
         raise AthenaError("Request could not be completed.")
+
+    @staticmethod
+    def _bundle_next(bundle: Mapping[str, Any]) -> str | None:
+        for link in bundle.get("link", []):
+            if isinstance(link, Mapping) and link.get("relation") == "next" and isinstance(link.get("url"), str):
+                return link["url"]
+        return None
+
+    @staticmethod
+    def _safe_error(operation: str, exc: Exception) -> str:
+        if isinstance(exc, httpx.HTTPStatusError):
+            return f"Athenahealth {operation} failed with HTTP {exc.response.status_code}. Check API permissions and request fields."
+        if isinstance(exc, httpx.TimeoutException):
+            return f"Athenahealth {operation} timed out."
+        if isinstance(exc, httpx.RequestError):
+            return f"Athenahealth {operation} could not reach the configured API endpoint."
+        return f"Athenahealth {operation} returned an invalid response."

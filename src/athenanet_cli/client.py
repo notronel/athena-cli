@@ -34,7 +34,12 @@ class AthenaClient:
         try:
             response = self._request(
                 "POST", self.settings.resolved_token_url,
-                data={"grant_type": "client_credentials", "scope": self.settings.scope},
+                data={
+                    "grant_type": "password",
+                    "username": self.settings.service_username,
+                    "password": self.settings.service_password.get_secret_value(),
+                    "scope": self.settings.scope,
+                },
                 auth=(self.settings.client_id, self.settings.client_secret.get_secret_value()),
             )
             token = response.json().get("access_token")
@@ -128,6 +133,8 @@ class AthenaClient:
     @staticmethod
     def _safe_error(operation: str, exc: Exception) -> str:
         if isinstance(exc, httpx.HTTPStatusError):
+            if operation == "authentication" and exc.response.status_code == 400:
+                return "Athenahealth authentication failed with HTTP 400. Verify the Client ID, Client Secret, API Server User name, and API Server User password."
             return f"Athenahealth {operation} failed with HTTP {exc.response.status_code}. Check API permissions and request fields."
         if isinstance(exc, httpx.TimeoutException):
             return f"Athenahealth {operation} timed out."

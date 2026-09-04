@@ -11,12 +11,14 @@ class AthenaSettings(BaseSettings):
 
     client_id: str
     client_secret: SecretStr
+    service_username: str
+    service_password: SecretStr
     fhir_base_url: str = "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer"
     token_url: str | None = None
     scope: str = "system/Patient.rs system/DocumentReference.rs"
     timeout_seconds: float = 20.0
 
-    @field_validator("client_id")
+    @field_validator("client_id", "service_username")
     @classmethod
     def required_non_blank(cls, value: str) -> str:
         if not value.strip():

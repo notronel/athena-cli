@@ -89,7 +89,7 @@ def auth_setup() -> None:
         "ATHENA_CLIENT_ID": client_id.strip(),
         "ATHENA_CLIENT_SECRET": client_secret,
         "ATHENA_SCOPE": "system/Patient.rs system/DocumentReference.rs",
-        "ATHENA_FHIR_BASE_URL": "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer",
+        "ATHENA_FHIR_BASE_URL": "https://api.preview.platform.athenahealth.com/fhir/r4",
     }
     destination.write_text("\n".join(f"{key}={json.dumps(value)}" for key, value in settings.items()) + "\n", encoding="utf-8")
     destination.chmod(0o600)

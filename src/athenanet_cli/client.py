@@ -32,8 +32,9 @@ class AthenaClient:
 
     def authenticate(self) -> None:
         try:
+            token_url = self.settings.token_url or self._discover_token_url()
             response = self._request(
-                "POST", self.settings.resolved_token_url,
+                "POST", token_url,
                 data={"grant_type": "client_credentials", "scope": self.settings.scope},
                 auth=(self.settings.client_id, self.settings.client_secret.get_secret_value()),
             )
@@ -43,6 +44,20 @@ class AthenaClient:
         if not isinstance(token, str) or not token:
             raise AthenaError("Authentication succeeded but did not return an access token.")
         self._access_token = token
+
+    def _discover_token_url(self) -> str:
+        try:
+            response = self._request(
+                "GET",
+                self.settings.smart_configuration_url,
+                headers={"Accept": "application/json"},
+            )
+            token_url = response.json().get("token_endpoint")
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            raise AthenaError(self._safe_error("SMART configuration", exc)) from exc
+        if not isinstance(token_url, str) or not token_url.startswith("https://"):
+            raise AthenaError("Athenahealth SMART configuration did not provide a valid token endpoint.")
+        return token_url
 
     def search_patients(self, *, patient_id: str | None = None, first_name: str | None = None, last_name: str | None = None, dob: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         if not any((patient_id, first_name, last_name, dob)):
@@ -72,7 +87,7 @@ class AthenaClient:
         query = [(key, value) for key, value in (params.items() if isinstance(params, Mapping) else params) if value is not None]
         query.append(("_count", str(min(50, limit))))
         resources: list[dict[str, Any]] = []
-        next_url: str | None = f"{self.settings.fhir_base_url}/fhir/{resource_type}"
+        next_url: str | None = f"{self.settings.fhir_base_url}/{resource_type}"
         while next_url and len(resources) < limit:
             payload = self._get_url(next_url, query)
             query = []
@@ -87,7 +102,7 @@ class AthenaClient:
         return resources
 
     def _resource(self, path: str) -> dict[str, Any]:
-        payload = self._get_url(f"{self.settings.fhir_base_url}/fhir/{path}")
+        payload = self._get_url(f"{self.settings.fhir_base_url}/{path}")
         if not isinstance(payload, Mapping):
             raise AthenaError("Unexpected FHIR resource response format.")
         return dict(payload)

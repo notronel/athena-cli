@@ -11,7 +11,7 @@ class AthenaSettings(BaseSettings):
 
     client_id: str
     client_secret: SecretStr
-    fhir_base_url: str = "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer"
+    fhir_base_url: str = "https://api.preview.platform.athenahealth.com/fhir/r4"
     token_url: str | None = None
     scope: str = "system/Patient.rs system/DocumentReference.rs"
     timeout_seconds: float = 20.0
@@ -29,5 +29,5 @@ class AthenaSettings(BaseSettings):
         return value.rstrip("/")
 
     @property
-    def resolved_token_url(self) -> str:
-        return self.token_url or f"{self.fhir_base_url}/oauth2/token"
+    def smart_configuration_url(self) -> str:
+        return f"{self.fhir_base_url}/.well-known/smart-configuration"

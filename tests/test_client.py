@@ -7,13 +7,7 @@ from athenanet_cli.config import AthenaSettings
 
 
 def settings() -> AthenaSettings:
-    return AthenaSettings(
-        client_id="client",
-        client_secret=SecretStr("secret"),
-        service_username="api-user",
-        service_password=SecretStr("api-password"),
-        fhir_base_url="https://example.test/demo",
-    )
+    return AthenaSettings(client_id="client", client_secret=SecretStr("secret"), fhir_base_url="https://example.test/demo")
 
 
 def test_patient_search_uses_fhir_bundle_and_read_only_get() -> None:
@@ -30,7 +24,7 @@ def test_patient_search_uses_fhir_bundle_and_read_only_get() -> None:
 
     assert [request.method for request in requests] == ["POST", "GET"]
     assert requests[0].headers["authorization"].startswith("Basic ")
-    assert requests[0].content == b"grant_type=password&username=api-user&password=api-password&scope=system%2FPatient.rs+system%2FDocumentReference.rs"
+    assert requests[0].content == b"grant_type=client_credentials&scope=system%2FPatient.rs+system%2FDocumentReference.rs"
     assert requests[1].url.path == "/demo/fhir/Patient"
     assert requests[1].url.params["given"] == "Ada"
 

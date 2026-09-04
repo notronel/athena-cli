@@ -12,7 +12,7 @@ python -m venv .venv
 .venv/bin/athena auth setup
 ```
 
-The setup wizard needs the Client ID and Client Secret for the registered application, plus the API Server User name and password created by your athenahealth organization. Then run `.venv/bin/athena auth check`. The CLI reads `.env` automatically and never prints a secret, writes API responses to disk, or persists tokens. `ATHENA_FHIR_BASE_URL` defaults to the athenaPractice v25 sandbox; override it only if athenahealth supplies a different URL.
+The setup wizard needs the Client ID and Client Secret for the registered application. Then run `.venv/bin/athena auth check`. The CLI reads `.env` automatically and never prints a secret, writes API responses to disk, or persists tokens. `ATHENA_FHIR_BASE_URL` defaults to the athenaPractice v25 sandbox; override it only if athenahealth supplies a different URL.
 
 ## Commands
 

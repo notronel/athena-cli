@@ -83,15 +83,11 @@ def auth_setup() -> None:
         raise typer.Abort()
     client_id = typer.prompt("Athenahealth Client ID")
     client_secret = typer.prompt("Athenahealth Client Secret", hide_input=True, confirmation_prompt=True)
-    service_username = typer.prompt("Athenahealth API Server User name")
-    service_password = typer.prompt("Athenahealth API Server User password", hide_input=True, confirmation_prompt=True)
-    if not client_id.strip() or not client_secret or not service_username.strip() or not service_password:
-        raise typer.BadParameter("Client ID, Client Secret, API Server User name, and API Server User password are required.")
+    if not client_id.strip() or not client_secret:
+        raise typer.BadParameter("Client ID and Client Secret are required.")
     settings = {
         "ATHENA_CLIENT_ID": client_id.strip(),
         "ATHENA_CLIENT_SECRET": client_secret,
-        "ATHENA_SERVICE_USERNAME": service_username.strip(),
-        "ATHENA_SERVICE_PASSWORD": service_password,
         "ATHENA_SCOPE": "system/Patient.rs system/DocumentReference.rs",
         "ATHENA_FHIR_BASE_URL": "https://ap25sandbox.fhirapi.athenahealth.com/demoAPIServer",
     }
